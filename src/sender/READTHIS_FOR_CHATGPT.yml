@@ -1,21 +1,21 @@
 # Welche Dateien ich immer laden soll (Reihenfolge egal)
 watch:
-  - src/empfaenger/ZuendpulsSv1.ino
-  - src/empfaenger/battery.h
-  - src/empfaenger/battery.cpp
-  - src/empfaenger/buttons.h
-  - src/empfaenger/buttons.cpp
-  - src/empfaenger/buzzer.h
-  - src/empfaenger/buzzer.cpp
-  - src/empfaenger/config.h
-  - src/empfaenger/display.h
-  - src/empfaenger/display.cpp
-  - src/empfaenger/leds.h
-  - src/empfaenger/leds.cpp
-  - src/empfaenger/radio.h
-  - src/empfaenger/radio.cpp
-  - src/empfaenger/rtc.h
-  - src/empfaenger/rtc.cpp
+  - src/sender/ZuendpulsSv1.ino
+  - src/sender/battery.h
+  - src/sender/battery.cpp
+  - src/sender/buttons.h
+  - src/sender/buttons.cpp
+  - src/sender/buzzer.h
+  - src/sender/buzzer.cpp
+  - src/sender/config.h
+  - src/sender/display.h
+  - src/sender/display.cpp
+  - src/sender/leds.h
+  - src/sender/leds.cpp
+  - src/sender/radio.h
+  - src/sender/radio.cpp
+  - src/sender/rtc.h
+  - src/sender/rtc.cpp
 
 # Optional: Metadaten für klare Kommunikation
 meta:
