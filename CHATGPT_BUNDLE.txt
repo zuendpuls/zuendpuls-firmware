@@ -1013,12 +1013,877 @@ void sense_scan_once(){
 
 ===== END src/empfaenger/sense.cpp =====
 
-===== src/empfaenger/ZuendpulsSv1.ino (MISSING) =====
+===== BEGIN src/sender/ZuendpulsSv1.ino =====
+#include <Arduino.h>
+#include <cstring>          // für strlen
+#include "config.h"
+#include "buttons.h"
+#include "leds.h"
+#include "buzzer.h"
+#include "display.h"
+#include "battery.h"
+#include "heater.h"
+#include "radio.h"
+#include "rtc.h"
 
-===== src/empfaenger/buttons.h (MISSING) =====
+// ===================== BUTTONS =====================
+Button btnScharf   { PIN_BTN_SCHARF, true, true, 10, false, false, 0 };
+Button btnUp       { PIN_BTN_UP,     true, true, 10, false, false, 0 };
+Button btnEnter    { PIN_BTN_ENTER,  true, true, 10, false, false, 0 };
+Button btnDown     { PIN_BTN_DOWN,   true, true, 10, false, false, 0 };
+Button btnRes[5] = {
+  { PIN_BTN_RES1, true, true, 10, false, false, 0 },
+  { PIN_BTN_RES2, true, true, 10, false, false, 0 },
+  { PIN_BTN_RES3, true, true, 10, false, false, 0 },
+  { PIN_BTN_RES4, true, true, 10, false, false, 0 },
+  { PIN_BTN_RES5, true, true, 10, false, false, 0 }
+};
+Button btnStart    { PIN_BTN_START,  true, true, 10, false, false, 0 };
 
-===== src/empfaenger/buttons.cpp (MISSING) =====
+// ===================== LEDs / DISPLAY =====================
+LedSet  leds;
+Display dsp;
 
-===== src/empfaenger/rtc.h (MISSING) =====
+// ===================== RTC / RADIO STATE =====================
+RTCX::RtcTime g_rtc;
+char g_timeStr[9] = "??:??:??";   // HH:MM:SS
+uint32_t g_rtcMs  = 0;
 
-===== src/empfaenger/rtc.cpp (MISSING) =====
+bool     g_radioOk      = false;
+uint8_t  g_radioErrCode = 0;      // 0=OK, 1=Version, 2=Params, 3=TX
+
+// ===================== UI STATE =====================
+volatile bool g_armed = false;
+UiPage   g_page    = UI_BOX;
+String   g_lastKey = "none";
+uint32_t g_uiTick  = 0;
+
+// ===================== SETUP =====================
+void setup() {
+  Serial.begin(115200);
+  delay(50);
+
+  // Mode-Pins sicher setzen: SLEEP/Config (M1=1, M0=1)
+  pinMode(PIN_RADIO_M0, OUTPUT);
+  pinMode(PIN_RADIO_M1, OUTPUT);
+  digitalWrite(PIN_RADIO_M0, HIGH);
+  digitalWrite(PIN_RADIO_M1, HIGH);
+  delay(20);
+
+  // Subsysteme
+  Buzz::begin();
+  leds.begin();
+  Battery::begin();
+  Heater::begin();
+  RTCX::begin();
+
+  // Radio-Basis
+  Radio::begin(9600);
+
+  // Selbsttest mit Fehlercode
+  Radio::SelfTestResult st = Radio::selfTest(700, 700, 1000);
+  g_radioErrCode = static_cast<uint8_t>(st);
+  g_radioOk = (st == Radio::ST_OK);
+
+  Serial.printf("Radio selftest: %s (code=%u)\n", g_radioOk ? "OK" : "ERR", g_radioErrCode);
+
+  // Buttons & Display
+  btnScharf.begin();
+  btnUp.begin(); btnEnter.begin(); btnDown.begin();
+  for (auto &b : btnRes) b.begin();
+  btnStart.begin();
+
+  dsp.begin();
+  dsp.splash("Sender init...");
+  Buzz::triple();
+
+  leds.allOff();
+  g_armed = false;
+
+  // Uhr ggf. einmalig stellen (nur kurz aktivieren, flashen, dann wieder aus)
+  // RTCX::set(2025, 10, 10, 13, 53, 0);
+}
+
+// ===================== UI / INPUT =====================
+static void handleUi(){
+  // Seitenwechsel
+  if (btnUp.fell(btnUp.update()))     { g_page = (UiPage)((g_page + UI_MAX - 1) % UI_MAX); g_lastKey = "Up";   Buzz::beep(40); }
+  if (btnDown.fell(btnDown.update())) { g_page = (UiPage)((g_page + 1) % UI_MAX);         g_lastKey = "Down"; Buzz::beep(40); }
+  if (btnEnter.fell(btnEnter.update())){
+    g_lastKey = "Enter";
+    Heater::set(!Heater::get());
+    Buzz::beep(60);
+  }
+
+  // Reserve-Taster LED spiegeln
+  for (int i=0;i<5;i++){
+    bool edge = btnRes[i].update();
+    if (btnRes[i].fell(edge)){
+      g_lastKey = String("Res") + String(i+1);
+      leds.ledRes[i].toggle();
+      Buzz::beep(30);
+    }
+  }
+
+  // Start/Pause
+  if (btnStart.fell(btnStart.update())){
+    g_lastKey = "Start";
+    leds.ledStart.toggle();
+    Buzz::beep(100);
+  }
+
+  // Schlüsselschalter (Scharf)
+  bool edgeArm = btnScharf.update();
+  if (btnScharf.fell(edgeArm)){
+    g_armed = true;
+    leds.ledScharf.on();
+    Buzz::triple();
+  } else if (btnScharf.rose(edgeArm)){
+    g_armed = false;
+    leds.ledScharf.off();
+    Buzz::beep(200);
+  }
+}
+
+// ===================== RTC-STRING =====================
+static void updateRtcString(){
+  if (RTCX::read(g_rtc) && g_rtc.valid){
+    snprintf(g_timeStr, sizeof(g_timeStr), "%02u:%02u:%02u", g_rtc.hour, g_rtc.min, g_rtc.sec);
+  } else {
+    strncpy(g_timeStr, "--:--:--", sizeof(g_timeStr));
+  }
+}
+
+// ===================== LOOP =====================
+void loop() {
+  handleUi();
+
+  // Akku
+  float vbat = Battery::readVoltage();
+  uint8_t pct = Battery::socPercent(vbat);
+  const char* battTxt = Battery::levelText(vbat);
+
+  // RTC alle ~200 ms aktualisieren
+  if (millis() - g_rtcMs > 200){
+    g_rtcMs = millis();
+    updateRtcString();
+  }
+
+  // LED: Ein/Aus-Ring spiegelt "armed"
+  if (g_armed) leds.ledRingSW.on(); else leds.ledRingSW.off();
+
+  // Display refresh ~100 ms
+  if (millis() - g_uiTick > 100){
+    g_uiTick = millis();
+    dsp.drawStatus(g_page, vbat, pct, battTxt, g_lastKey.c_str(),
+                   g_armed, Heater::get(), g_timeStr, g_radioOk, g_radioErrCode);
+  }
+
+  delay(1);
+}
+
+===== END src/sender/ZuendpulsSv1.ino =====
+
+===== BEGIN src/sender/battery.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+
+namespace Battery {
+
+  // LiFePO4 4S grobe LUT (Leerlauf/leichte Last). Sehr flache Mitte -> nur Näherung!
+  // {Spannung in V, Prozent}
+  static constexpr struct { float v; uint8_t p; } LUT[] = {
+    {14.40f,100}, {13.60f, 95}, {13.40f, 90}, {13.30f, 85},
+    {13.20f, 80}, {13.10f, 70}, {13.00f, 60}, {12.90f, 50},
+    {12.80f, 40}, {12.70f, 30}, {12.60f, 20}, {12.40f, 15},
+    {12.20f, 10}, {12.00f,  7}, {11.80f,  5}, {11.60f,  0}
+  };
+
+  // einfacher gleitender Mittelwert
+  static float v_filtered = 0.0f;
+  static const uint8_t avgSamples = 8;
+
+  inline void begin(){
+    analogReadResolution(ADC_BITS);
+    analogReadAveraging(avgSamples);     // Teensy-Hardware-Averaging
+    pinMode(PIN_ADC_BATT, INPUT);        // stabil & portable
+  }
+
+  inline float readVoltageRaw(){
+    uint16_t raw = analogRead(PIN_ADC_BATT);
+    float vin = ( (float)raw / ADC_COUNTS ) * ADC_VREF * BATT_DIV_FACTOR;
+    // Kalibrierung anwenden
+    vin = vin * BATT_CAL_SCALE + BATT_CAL_OFFSET;
+    return vin;
+  }
+
+  inline float readVoltage(){
+    float v = readVoltageRaw();
+    if (v_filtered <= 0.01f) v_filtered = v;               // initialisieren
+    v_filtered = v_filtered * 0.7f + v * 0.3f;             // EMA
+    return v_filtered;
+  }
+
+  inline uint8_t socPercent(float v){
+    // über/unter LUT kappen
+    if (v >= LUT[0].v) return 100;
+    if (v <= LUT[sizeof(LUT)/sizeof(LUT[0]) - 1].v) return 0;
+    // Interpolation zwischen Stützstellen
+    for (size_t i=0; i< (sizeof(LUT)/sizeof(LUT[0]) - 1); ++i){
+      if (v >= LUT[i+1].v && v <= LUT[i].v){
+        float x0=LUT[i].v,   y0=LUT[i].p;
+        float x1=LUT[i+1].v, y1=LUT[i+1].p;
+        float t = (v - x1) / (x0 - x1); // 0..1
+        float p = y1 + t * (y0 - y1);
+        if (p<0) p=0; if (p>100) p=100;
+        return (uint8_t)(p + 0.5f);
+      }
+    }
+    return 0;
+  }
+
+  inline const char* levelText(float v){
+    if (v <= BATT_CRIT_V) return "LOW!";
+    if (v <= BATT_WARN_V) return "Warn";
+    return "OK";
+  }
+}
+
+===== END src/sender/battery.h =====
+
+===== BEGIN src/sender/battery.cpp =====
+#include "battery.h"
+// (inline)
+
+===== END src/sender/battery.cpp =====
+
+===== BEGIN src/sender/buttons.h =====
+#pragma once
+#include <Arduino.h>
+
+struct Button {
+  uint8_t pin;
+  bool    pullup;       // INPUT_PULLUP?
+  bool    invert;       // LOW = pressed
+  uint16_t debounce_ms; // stabiler Zeitraum
+  bool    state;        // aktueller stabiler Zustand
+  bool    lastState;
+  uint32_t lastChange;
+
+  void begin() {
+    pinMode(pin, pullup ? INPUT_PULLUP : INPUT);
+    bool raw = digitalRead(pin);
+    state = lastState = invert ? !raw : raw;
+    lastChange = millis();
+  }
+
+  // returns true on rising/falling edges
+  bool update() {
+    bool raw = digitalRead(pin);
+    bool logical = invert ? !raw : raw;
+    if (logical != lastState) {
+      // potenzieller Wechsel -> Timer setzen
+      if (millis() - lastChange >= debounce_ms) {
+        lastChange = millis();
+        lastState = logical;
+        state = logical;
+        return true; // Edge bestätigt
+      }
+    } else {
+      lastChange = millis(); // stabil
+    }
+    return false;
+  }
+
+  bool pressed() const { return state; }
+  bool fell(bool currentEdge) const {
+    // pressed edge (von false -> true)
+    // das prüfen in der Loop: wenn currentEdge und pressed()==true
+    return currentEdge && state == true;
+  }
+  bool rose(bool currentEdge) const {
+    return currentEdge && state == false;
+  }
+};
+
+===== END src/sender/buttons.h =====
+
+===== BEGIN src/sender/buttons.cpp =====
+#include "buttons.h"
+// (leer – alles inline in struct. Platzhalter für evtl. Gruppenfunktionen)
+
+===== END src/sender/buttons.cpp =====
+
+===== BEGIN src/sender/buzzer.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+
+namespace Buzz {
+  inline void begin(){ pinMode(PIN_BUZZER, OUTPUT); digitalWrite(PIN_BUZZER, LOW); }
+  inline void beep(uint16_t ms){ digitalWrite(PIN_BUZZER, HIGH); delay(ms); digitalWrite(PIN_BUZZER, LOW); }
+  inline void triple(){ beep(80); delay(80); beep(80); delay(80); beep(120); }
+}
+
+===== END src/sender/buzzer.h =====
+
+===== BEGIN src/sender/buzzer.cpp =====
+#include "buzzer.h"
+// (inline)
+
+===== END src/sender/buzzer.cpp =====
+
+===== BEGIN src/sender/config.h =====
+#pragma once
+#include <Arduino.h>
+
+// ====== PINS laut Deiner Liste ======
+// Funkmodul (E32-433T33S)
+constexpr uint8_t PIN_RADIO_RX   = 0;   // UART RX (Teensy)
+constexpr uint8_t PIN_RADIO_TX   = 1;   // UART TX
+constexpr uint8_t PIN_RADIO_AUX  = 2;
+constexpr uint8_t PIN_RADIO_M0   = 3;
+constexpr uint8_t PIN_RADIO_M1   = 4;
+
+// Buzzer
+constexpr uint8_t PIN_BUZZER     = 6;
+
+// OLED (SSD1309 SPI)
+constexpr uint8_t PIN_OLED_RES   = 7;
+constexpr uint8_t PIN_OLED_DC    = 8;
+constexpr uint8_t PIN_OLED_CS    = 9;
+constexpr uint8_t PIN_OLED_MOSI  = 11;
+constexpr uint8_t PIN_OLED_SCK   = 13;
+
+// LED Ringe / LEDs
+constexpr uint8_t PIN_LED_RING_SW     = 10; // Ein/Aus-Schalter LED-Ring
+constexpr uint8_t PIN_LED_SCHARF      = 21; // "Armed" LED
+constexpr uint8_t PIN_LED_UP          = 27;
+constexpr uint8_t PIN_LED_ENTER       = 28;
+constexpr uint8_t PIN_LED_DOWN        = 29;
+constexpr uint8_t PIN_LED_RES1        = 30;
+constexpr uint8_t PIN_LED_RES2        = 31;
+constexpr uint8_t PIN_LED_RES3        = 32;
+constexpr uint8_t PIN_LED_RES4        = 33;
+constexpr uint8_t PIN_LED_RES5        = 34;
+constexpr uint8_t PIN_LED_START       = 41;
+
+// Taster
+constexpr uint8_t PIN_BTN_SCHARF      = 22; // Schlüsselschalter (digital gelesen)
+constexpr uint8_t PIN_BTN_UP          = 24;
+constexpr uint8_t PIN_BTN_ENTER       = 25;
+constexpr uint8_t PIN_BTN_DOWN        = 26;
+constexpr uint8_t PIN_BTN_RES1        = 35;
+constexpr uint8_t PIN_BTN_RES2        = 36;
+constexpr uint8_t PIN_BTN_RES3        = 37;
+constexpr uint8_t PIN_BTN_RES4        = 38;
+constexpr uint8_t PIN_BTN_RES5        = 39;
+constexpr uint8_t PIN_BTN_START       = 40;
+
+// Messungen / Aktoren
+constexpr uint8_t PIN_ADC_BATT        = 14; // A0
+constexpr uint8_t PIN_ADC_HEATER      = 15; // ADC für Heizungssensor
+constexpr uint8_t PIN_HEATER_EN       = 16; // Heizung On/Off
+
+// RTC (I2C)
+constexpr uint8_t PIN_RTC_SDA         = 18;
+constexpr uint8_t PIN_RTC_SCL         = 19;
+
+// ====== Konstanten ======
+constexpr float    ADC_VREF           = 3.3f;
+constexpr uint16_t ADC_BITS           = 12;      // Teensy kann 12 Bit sauber
+constexpr float    ADC_COUNTS         = (1 << ADC_BITS) - 1; // 4095
+
+// Batterie-Teiler: 33k (R1 oben) + 10k (R2 unten) -> Faktor = (R1+R2)/R2
+constexpr float    BATT_R1_KOHM       = 33.0f;
+constexpr float    BATT_R2_KOHM       = 10.0f;
+constexpr float    BATT_DIV_FACTOR    = (BATT_R1_KOHM + BATT_R2_KOHM) / BATT_R2_KOHM; // 4.3
+
+// ====== LiFePO4 (4S) Grenzwerte ======
+// Voll ~14.4–14.6 V (unter Last meist ~13.6–14.0 V), sehr flache Kurve.
+// Warnen ab ~12.4 V (≈ ~20–30%), kritisch ab ~11.6 V (~3.0 V/Zelle).
+constexpr float    BATT_WARN_V        = 12.4f;
+constexpr float    BATT_CRIT_V        = 11.6f;
+
+// Kalibrierung (optional):
+// Wenn Multimeter z.B. 12.80 V zeigt, Code aber 12.60 V:
+// -> BATT_CAL_SCALE = 12.80/12.60 = 1.0159
+constexpr float    BATT_CAL_SCALE     = 1.000f;  // Multiplikation
+constexpr float    BATT_CAL_OFFSET    = 0.00f;   // Addition (in Volt)
+
+enum UiPage : uint8_t { UI_BOX = 0, UI_BATT = 1, UI_COUNT = 2, UI_MAX = 3 };
+
+// kleine Helfer
+template<typename T, size_t N>
+constexpr size_t array_len(const T (&)[N]) { return N; }
+
+===== END src/sender/config.h =====
+
+===== BEGIN src/sender/display.h =====
+#pragma once
+#include <Arduino.h>
+#include <U8g2lib.h>
+#include "config.h"
+
+class Display {
+public:
+  Display();
+  void begin();
+  void splash(const char* line = "Display OK");
+
+  // Achtung: Signatur inkl. radioOk & radioErrCode!
+  void drawStatus(UiPage page,
+                  float battV, uint8_t battPct, const char* battTxt,
+                  const char* lastKey, bool armed, bool heaterOn,
+                  const char* timeHHMMSS, bool radioOk, uint8_t radioErrCode);
+
+private:
+  U8G2* u8g2; // wird in begin() alloziert
+};
+
+===== END src/sender/display.h =====
+
+===== BEGIN src/sender/display.cpp =====
+#include "display.h"
+#include <SPI.h>
+
+Display::Display() : u8g2(nullptr) {}
+
+void Display::begin() {
+  // SSD1309 (128x64) SPI, Pins aus config.h
+  u8g2 = new U8G2_SSD1309_128X64_NONAME2_F_4W_HW_SPI(
+    U8G2_R0,         // Rotation
+    PIN_OLED_CS,     // CS
+    PIN_OLED_DC,     // DC
+    PIN_OLED_RES     // RESET
+  );
+  u8g2->begin();
+}
+
+void Display::splash(const char* line) {
+  if (!u8g2) return;
+  u8g2->clearBuffer();
+  u8g2->setFont(u8g2_font_6x12_tr);
+  u8g2->drawStr(0, 14, line);
+  u8g2->sendBuffer();
+}
+
+void Display::drawStatus(UiPage page,
+                         float battV, uint8_t battPct, const char* battTxt,
+                         const char* lastKey, bool armed, bool heaterOn,
+                         const char* timeHHMMSS, bool radioOk, uint8_t radioErrCode)
+{
+  if (!u8g2) return;
+
+  u8g2->clearBuffer();
+  u8g2->setFont(u8g2_font_6x12_tr);
+
+  // Header: Titel links
+  u8g2->drawStr(0, 12, "Sender UI");
+
+  // Header: Uhr rechts (Breite grob 8 Zeichen à 6px = 48px)
+  if (timeHHMMSS) {
+    const int w = 6 * 8;
+    u8g2->drawStr(128 - w, 12, timeHHMMSS);
+  }
+
+  // Zeile 2: Page + ARM
+  char top[40];
+  snprintf(top, sizeof(top), "Page:%u  ARM:%s", (unsigned)page, armed ? "ON" : "OFF");
+  u8g2->drawStr(0, 24, top);
+
+  if (page == UI_BOX) {
+    if (radioOk) {
+      u8g2->drawStr(0, 38, "Box: Radio OK");
+    } else {
+      char ln[28];
+      snprintf(ln, sizeof(ln), "Box: Radio ERR(%u)", radioErrCode);
+      u8g2->drawStr(0, 38, ln);
+    }
+    char ln2[28];
+    snprintf(ln2, sizeof(ln2), "Heater:%s", heaterOn ? "ON" : "OFF");
+    u8g2->drawStr(0, 50, ln2);
+
+  } else if (page == UI_BATT) {
+    // Batterie-Text
+    char ln1[48];
+    snprintf(ln1, sizeof(ln1), "Batt: %.2f V  %u%%  [%s]", battV, battPct, battTxt ? battTxt : "");
+    u8g2->drawStr(0, 38, ln1);
+
+    // Batterie-Balken (100x10)
+    const int x = 0, y = 52, w = 100, h = 10;
+    u8g2->drawFrame(x, y - h, w, h);
+    int fill = (w * battPct) / 100;
+    if (fill > 0) {
+      int inner = fill - 2;
+      if (inner < 0) inner = 0;
+      u8g2->drawBox(x + 1, y - h + 1, inner, h - 2);
+    }
+
+  } else if (page == UI_COUNT) {
+    u8g2->drawStr(0, 38, "Count/Info Seite");
+    char ln[48];
+    snprintf(ln, sizeof(ln), "Letzter Taster: %s", lastKey ? lastKey : "none");
+    u8g2->drawStr(0, 50, ln);
+  }
+
+  u8g2->sendBuffer();
+}
+
+===== END src/sender/display.cpp =====
+
+===== BEGIN src/sender/leds.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+
+struct Led {
+  uint8_t pin;
+  void begin() { pinMode(pin, OUTPUT); off(); }
+  void on()    { digitalWrite(pin, HIGH); }
+  void off()   { digitalWrite(pin, LOW); }
+  void toggle(){ digitalWrite(pin, !digitalRead(pin)); }
+};
+
+struct LedSet {
+  Led ledRingSW, ledScharf, ledUp, ledEnter, ledDown, ledRes[5], ledStart;
+
+  void begin() {
+    ledRingSW.pin = PIN_LED_RING_SW; ledRingSW.begin();
+    ledScharf.pin = PIN_LED_SCHARF;  ledScharf.begin();
+    ledUp.pin     = PIN_LED_UP;      ledUp.begin();
+    ledEnter.pin  = PIN_LED_ENTER;   ledEnter.begin();
+    ledDown.pin   = PIN_LED_DOWN;    ledDown.begin();
+    uint8_t resPins[5] = {PIN_LED_RES1, PIN_LED_RES2, PIN_LED_RES3, PIN_LED_RES4, PIN_LED_RES5};
+    for (int i=0;i<5;i++){ ledRes[i].pin = resPins[i]; ledRes[i].begin(); }
+    ledStart.pin  = PIN_LED_START;   ledStart.begin();
+  }
+
+  void allOff(){
+    ledRingSW.off(); ledScharf.off(); ledUp.off(); ledEnter.off(); ledDown.off();
+    for (auto &l : ledRes) l.off();
+    ledStart.off();
+  }
+};
+
+===== END src/sender/leds.h =====
+
+===== BEGIN src/sender/leds.cpp =====
+#include "leds.h"
+// (Logik inlined)
+
+===== END src/sender/leds.cpp =====
+
+===== BEGIN src/sender/radio.h =====
+#pragma once
+#include <Arduino.h>
+#include <stdint.h>
+#include "config.h"
+
+namespace Radio {
+
+  enum Mode : uint8_t { MODE_NORMAL=0, MODE_WAKEUP=1, MODE_POWER_SAVING=2, MODE_SLEEP=3 };
+
+  struct Version {
+    bool ok{false};
+    uint8_t ver{0};    // z.B. 0x32
+    uint8_t module{0}; // 0x46/0x47 etc.
+    uint8_t freq{0};   // 0x32=433, 0x64=868, 0xC8=915
+  };
+
+  struct Params {
+    bool ok{false};
+    uint8_t ADDH{0}, ADDL{0}, SPED{0}, CHAN{0}, OPTION{0};
+  };
+
+  enum SelfTestResult : uint8_t {
+    ST_OK = 0,
+    ST_ERR_VERSION = 1,
+    ST_ERR_PARAMS  = 2,
+    ST_ERR_TX      = 3
+  };
+
+  // Basis
+  void begin(uint32_t baud=9600);
+  void setMode(Mode m);
+  bool waitAux(uint32_t timeout_ms=500);
+  bool auxLevel();
+
+  // Abfragen
+  Version readVersion(uint32_t timeout_ms=700);
+  Params  readParams(uint32_t timeout_ms=1200);
+
+  // TX-Test
+  bool    sendTestPacket(const uint8_t* data, size_t len, uint32_t timeout_ms=800);
+
+  // Selbsttest (Version -> Params -> Test-TX)
+  SelfTestResult selfTest(uint32_t ver_to_ms = 700, uint32_t par_to_ms = 1200, uint32_t tx_to_ms = 1000);
+
+} // namespace Radio
+
+===== END src/sender/radio.h =====
+
+===== BEGIN src/sender/radio.cpp =====
+#include "radio.h"
+#include <cstring> // strlen
+
+namespace {
+  inline void pinWrite(uint8_t p, bool hi){ digitalWrite(p, hi?HIGH:LOW); }
+  inline bool pinRead(uint8_t p){ return digitalRead(p); }
+
+  const uint8_t CMD_READ_VERSION[3] = {0xC3,0x00,0x08};
+  const uint8_t CMD_READ_PARAMS [3] = {0xC1,0x00,0x09};
+
+  void clearSerial(HardwareSerial& s){
+    while (s.available()) (void)s.read();
+  }
+
+  size_t readBytesTimeout(HardwareSerial& s, uint8_t* buf, size_t len, uint32_t to_ms){
+    uint32_t start = millis(); size_t got = 0;
+    while (got < len && (millis() - start) < to_ms){
+      if (s.available()){
+        buf[got++] = (uint8_t)s.read();
+      } else {
+        yield();
+      }
+    }
+    return got;
+  }
+
+  // Suche nach Sequenz C1 00 09 im Puffer
+  int findParamsHeader(const uint8_t* b, int n){
+    for (int i=0; i<=n-3; ++i){
+      if (b[i]==0xC1 && b[i+1]==0x00 && b[i+2]==0x09) return i;
+    }
+    return -1;
+  }
+}
+
+namespace Radio {
+
+  void begin(uint32_t baud){
+    pinMode(PIN_RADIO_M0, OUTPUT);
+    pinMode(PIN_RADIO_M1, OUTPUT);
+    pinMode(PIN_RADIO_AUX, INPUT);
+
+    // Start in SLEEP/Config (M1=1, M0=1)
+    pinWrite(PIN_RADIO_M0, HIGH);
+    pinWrite(PIN_RADIO_M1, HIGH);
+    delay(20);
+
+    Serial1.begin(baud);
+    delay(60);
+    waitAux(1000);
+    clearSerial(Serial1);
+  }
+
+  bool auxLevel(){ return pinRead(PIN_RADIO_AUX); }
+
+  void setMode(Mode m){
+    switch(m){
+      case MODE_NORMAL:       pinWrite(PIN_RADIO_M1, LOW);  pinWrite(PIN_RADIO_M0, LOW);  break;
+      case MODE_WAKEUP:       pinWrite(PIN_RADIO_M1, LOW);  pinWrite(PIN_RADIO_M0, HIGH); break;
+      case MODE_POWER_SAVING: pinWrite(PIN_RADIO_M1, HIGH); pinWrite(PIN_RADIO_M0, LOW);  break;
+      case MODE_SLEEP:        pinWrite(PIN_RADIO_M1, HIGH); pinWrite(PIN_RADIO_M0, HIGH); break;
+    }
+    delay(12);
+    waitAux(1000);
+    clearSerial(Serial1);
+  }
+
+  bool waitAux(uint32_t timeout_ms){
+    uint32_t t0 = millis();
+    while ((millis()-t0) < timeout_ms){
+      if (pinRead(PIN_RADIO_AUX)) return true;
+    }
+    return false;
+  }
+
+  Version readVersion(uint32_t timeout_ms){
+    Version v;
+    setMode(MODE_SLEEP);
+    clearSerial(Serial1);
+
+    Serial1.write(CMD_READ_VERSION, 3);
+    Serial1.flush();
+    delay(10); // kleinen Moment geben
+
+    uint8_t buf[8] = {0};
+    size_t n = readBytesTimeout(Serial1, buf, sizeof(buf), timeout_ms);
+
+    if (n >= 4 && buf[0] == 0xC3){
+      v.ok     = true;
+      v.ver    = buf[1];
+      v.module = buf[2];
+      v.freq   = buf[3];
+    }
+    return v;
+  }
+
+  Params readParams(uint32_t timeout_ms){
+    Params p;
+    setMode(MODE_SLEEP);
+    clearSerial(Serial1);
+
+    Serial1.write(CMD_READ_PARAMS, 3);
+    Serial1.flush();
+    delay(10);
+
+    // Wir wissen nicht genau, wie lang die Antwort ausfällt:
+    // daher großzügiger Puffer und dann nach Header scannen.
+    uint8_t tmp[32] = {0};
+    size_t n = readBytesTimeout(Serial1, tmp, sizeof(tmp), timeout_ms);
+
+    // Versuch 1: Header suchen (C1 00 09)
+    int k = findParamsHeader(tmp, (int)n);
+    if (k >= 0){
+      // danach sollten mind. 6 Nutzbytes kommen
+      if (k + 9 <= (int)n){
+        p.ADDH   = tmp[k+3];
+        p.ADDL   = tmp[k+4];
+        p.SPED   = tmp[k+5];
+        p.CHAN   = tmp[k+6];
+        p.OPTION = tmp[k+7];
+        p.ok = true;
+        return p;
+      }
+    }
+
+    // Versuch 2: Einige Module liefern nur 6 Bytes (ohne Header) direkt.
+    if (n == 6){
+      p.ADDH   = tmp[0];
+      p.ADDL   = tmp[1];
+      p.SPED   = tmp[2];
+      p.CHAN   = tmp[3];
+      p.OPTION = tmp[4];
+      p.ok = true;
+      return p;
+    }
+
+    // Versuch 3: Wenn >=6 Bytes insgesamt, nimm die letzten 6 als Payload.
+    if (n >= 6){
+      p.ADDH   = tmp[n-6];
+      p.ADDL   = tmp[n-5];
+      p.SPED   = tmp[n-4];
+      p.CHAN   = tmp[n-3];
+      p.OPTION = tmp[n-2];
+      p.ok = true;
+      return p;
+    }
+
+    // sonst: fail
+    p.ok = false;
+    return p;
+  }
+
+  bool sendTestPacket(const uint8_t* data, size_t len, uint32_t timeout_ms){
+    setMode(MODE_NORMAL);
+    size_t sent = Serial1.write(data, len);
+    Serial1.flush();
+    // Warte bis AUX wieder HIGH (TX fertig)
+    return (sent == len) && waitAux(timeout_ms);
+  }
+
+  SelfTestResult selfTest(uint32_t ver_to_ms, uint32_t par_to_ms, uint32_t tx_to_ms){
+    Version rv = readVersion(ver_to_ms);
+    if (!rv.ok) return ST_ERR_VERSION;
+
+    Params rp = readParams(par_to_ms);
+    if (!rp.ok) return ST_ERR_PARAMS;
+
+    const char* msg = "SENDER-HELLO";
+    bool txok = sendTestPacket((const uint8_t*)msg, strlen(msg), tx_to_ms);
+    if (!txok) return ST_ERR_TX;
+
+    return ST_OK;
+  }
+
+} // namespace Radio
+
+===== END src/sender/radio.cpp =====
+
+===== BEGIN src/sender/rtc.h =====
+#pragma once
+#include <Arduino.h>
+#include <Wire.h>
+#include "config.h"
+
+namespace RTCX {
+
+struct RtcTime {
+  uint8_t sec{0}, min{0}, hour{0}, day{1}, month{1};
+  uint16_t year{2000};
+  bool valid{false};
+};
+
+inline uint8_t bcd2bin(uint8_t v){ return v - 6 * (v >> 4); }
+inline uint8_t bin2bcd(uint8_t v){ return v + 6 * (v / 10); }
+
+inline void begin(){
+  // Teensy 4.x: Standard I2C-Pins (SDA=18, SCL=19)
+  Wire.begin();
+  Wire.setClock(400000); // 400kHz okay für DS3231
+}
+
+// Liest Zeit aus DS3231 @ 0x68
+inline bool read(RtcTime &t){
+  Wire.beginTransmission(0x68);
+  Wire.write((uint8_t)0x00); // Sek.-Register
+  if (Wire.endTransmission(false) != 0) return t.valid = false, false;
+
+  // 7 Bytes: sec, min, hour, dow, day, month, year
+  if (Wire.requestFrom(0x68, 7u) != 7) return t.valid = false, false;
+
+  uint8_t sec   = Wire.read();
+  uint8_t min   = Wire.read();
+  uint8_t hour  = Wire.read();
+  (void)Wire.read();             // Wochentag ignorieren
+  uint8_t mday  = Wire.read();
+  uint8_t month = Wire.read();
+  uint8_t year  = Wire.read();
+
+  // Stunden: 12/24h Bit6 in hour; wir erzwingen 24h
+  if (hour & 0x40){              // 12h-Format
+    bool pm = hour & 0x20;
+    hour = bcd2bin(hour & 0x1F);
+    if (pm && hour < 12) hour += 12;
+    if (!pm && hour == 12) hour = 0;
+  } else {
+    hour = bcd2bin(hour & 0x3F);
+  }
+
+  t.sec   = bcd2bin(sec & 0x7F);
+  t.min   = bcd2bin(min & 0x7F);
+  t.hour  = hour;
+  t.day   = bcd2bin(mday & 0x3F);
+  t.month = bcd2bin(month & 0x1F);
+  t.year  = 2000 + bcd2bin(year);
+  t.valid = true;
+  return true;
+}
+
+// Optional: Uhr stellen (24h)
+inline bool set(uint16_t y, uint8_t m, uint8_t d, uint8_t hh, uint8_t mm, uint8_t ss){
+  if (y < 2000) y = 2000;
+  Wire.beginTransmission(0x68);
+  Wire.write((uint8_t)0x00);
+  Wire.write(bin2bcd(ss));
+  Wire.write(bin2bcd(mm));
+  Wire.write(bin2bcd(hh));     // 24h
+  Wire.write((uint8_t)0x01);   // Wochentag dummy
+  Wire.write(bin2bcd(d));
+  Wire.write(bin2bcd(m));
+  Wire.write(bin2bcd((uint8_t)(y - 2000)));
+  return Wire.endTransmission() == 0;
+}
+
+} // namespace RTCX
+
+===== END src/sender/rtc.h =====
+
+===== BEGIN src/sender/rtc.cpp =====
+#include "rtc.h"
+// später: Zeit lesen/schreiben
+
+===== END src/sender/rtc.cpp =====
