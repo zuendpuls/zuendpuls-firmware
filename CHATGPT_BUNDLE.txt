@@ -1,5 +1,279 @@
 
-===== src/empfaenger/main.cpp (MISSING) =====
+===== BEGIN src/empfaenger/Schwellwerte.rtf =====
+{\rtf1\ansi\ansicpg1252\cocoartf2639
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\froman\fcharset0 Times-Roman;\f1\froman\fcharset0 Times-Bold;\f2\fmodern\fcharset0 Courier;
+\f3\ftech\fcharset77 Symbol;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}
+{\list\listtemplateid2\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid101\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid2}
+{\list\listtemplateid3\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid201\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid3}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}{\listoverride\listid2\listoverridecount0\ls2}{\listoverride\listid3\listoverridecount0\ls3}}
+\paperw11900\paperh16840\margl1440\margr1440\vieww33400\viewh17940\viewkind0
+\deftab720
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\fs24 \cf0 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Perfekt, das Ergebnis (alle ~1050 \'96 egal ob 2.2 \uc0\u937 , 3.3 \u937 , 100 \u937 ) ist v\'f6llig ok. Dein Messaufbau erkennt \'84
+\f1\b Last vorhanden
+\f0\b0 \'93 \'96 nicht die genaue Ohmzahl. Damit k\'f6nnen wir eine robuste Schwelle setzen.\
+\pard\pardeftab720\sa298\partightenfactor0
+
+\f1\b\fs36 \cf0 \strokec2 Empfehlung Schwelle (5-V-Messmodus, 24 V AUS)\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls1\ilvl0
+\fs24 \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Ein-Schwelle (ON):
+\f0\b0  
+\f2\fs26 raw > 700
+\f0\fs24 \
+\ls1\ilvl0
+\f1\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Aus-Schwelle (OFF):
+\f0\b0  
+\f2\fs26 raw < 200
+\f0\fs24 \
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls1\ilvl0\cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Dazwischen: Zustand halten (Hysterese)\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 Damit hast du viel Luft zu \'84offen\'93 (typ. 0\'8510) und genug Abstand zu \'84Last\'93 (~1050).\
+\pard\pardeftab720\sa280\partightenfactor0
+
+\f1\b\fs28 \cf0 Mini-Patch (nur die Klassifizierung ersetzen)\
+\pard\pardeftab720\partightenfactor0
+
+\f2\b0\fs26 \cf0 // ---- Klassifizieren ----\
+bool clamp = (vy >= TH_ZENER_VY);     // 24V/Clamp? -> niemals "Durchgang"\
+static bool state[8] = \{0\};           // Hysterese-Speicher pro Kanal\
+\
+if (!clamp) \{\
+  if (raw > 700) state[ch] = true;    // EIN-Schwelle\
+  else if (raw < 200) state[ch] = false; // AUS-Schwelle\
+  // sonst Zustand halten\
+\} else \{\
+  state[ch] = false;                  // Clamp z\'e4hlt als "offen"\
+\}\
+\
+bool connected = state[ch];\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\fs24 \cf0 (Deine Ausgabe/LED-Maske nutzt dann 
+\f2\fs26 connected
+\f0\fs24  statt der alten Logik.)\
+\pard\pardeftab720\sa298\partightenfactor0
+
+\f1\b\fs36 \cf0 \strokec2 Was die 1050 bedeuten\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\b0\fs24 \cf0 \strokec2 Mit deinen aktuellen 5-V-Bedingungen ergibt sich am ADC etwa:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls2\ilvl0
+\f2\fs26 \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Vadc \uc0\u8776  0.85 V
+\f0\fs24  
+\f3 \uc0\u8594 
+\f0  
+\f2\fs26 raw \uc0\u8776  1050
+\f0\fs24 \
+\ls2\ilvl0
+\f2\fs26 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Vy \uc0\u8776  1.6 V
+\f0\fs24  (wegen 
+\f2\fs26 DIV_GAIN=1.879
+\f0\fs24 )\uc0\u8232 Das ist absolut fein \'96 Hauptsache, 
+\f1\b deutlich
+\f0\b0  \'fcber \'84offen\'93.\
+\pard\pardeftab720\sa298\partightenfactor0
+
+\f1\b\fs36 \cf0 \strokec2 Widerst\'e4nde behalten?\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\b0\fs24 \cf0 \strokec2 F\'fcrs weitere Testen reichen:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sa240\partightenfactor0
+\ls3\ilvl0
+\f1\b \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 2.2 \uc0\u937 
+\f0\b0  (Z\'fcnder-Ersatz / Worst-Case)\
+\ls3\ilvl0
+\f1\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 100 \uc0\u937 
+\f0\b0  (sch\'f6ne Referenz f\'fcr 5-V-Messung)\
+\ls3\ilvl0
+\f1\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 560 \uc0\u937 
+\f0\b0  (oberes Ende)\uc0\u8232 Alles andere kannst du gern zur\'fcckgeben \'96 f\'fcr die Erkennung bringt\'92s kaum Mehrwert.\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 Und wie gehabt: Sobald 
+\f1\b 24 V
+\f0\b0  anliegen, greift die 
+\f1\b Clamp-Erkennung
+\f0\b0  (
+\f2\fs26 Vy > 4.3 V
+\f0\fs24 ) und es wird 
+\f1\b nie
+\f0\b0  \'84Durchgang\'93 gemeldet, bis tats\'e4chlich gefeuert wird.\
+R}
+===== END src/empfaenger/Schwellwerte.rtf =====
+
+===== BEGIN src/empfaenger/ZuendpulsEv1.ino =====
+#include "config.h"
+#include "mapping.h"
+#include "leds.h"
+#include "mux.h"
+#include "sense.h"
+#include "power.h"
+#include "display.h"
+#include "buzzer.h"
+#include "radio.h"
+#include "temp.h"
+#include "heater.h"
+#include "battery.h"
+
+
+
+// Software-ARM (ohne Taster)
+static bool armed = false;
+static uint32_t sense_start_ms = 0;
+static uint32_t ui_tick_ms = 0;
+
+static uint8_t  ui_page    = 0;      // 0=BOX, 1=BAT, 2=COUNT
+static uint32_t ui_page_ms = 0;
+
+static float     g_last_tempC = 0.0f;
+
+static void buzzer_triple(){ buzzer_beep(80); delay(80); buzzer_beep(80); delay(80); buzzer_beep(120); }
+
+static void set_armed(bool make_armed){
+  if (make_armed == armed) return;
+
+  if (make_armed){
+    // Deep-Voltage Check
+    float v = battery_read_voltage();
+    if (v < FIRE_INHIBIT_V){
+      Serial.print("ARM VERWEIGERT: Akku zu niedrig (");
+      Serial.print(v,2); Serial.println(" V).");
+      buzzer_triple();
+      // Anzeige aktualisieren bleibt SAFE
+      return;
+    }
+    // -> ARMED
+    armed = true;
+    heater_set_kill(true);     // <--- Heizung sofort AUS
+    sense_stop(!LED_KEEP_WHEN_ARMED);
+    delay(5);
+    power_set_24v(true);
+    buzzer_pattern_armed();
+    Serial.println("-> ARMED: Sense AUS, 24V EIN, HEATER AUS.");
+  } else {
+    // -> SAFE
+    armed = false;
+    power_set_24v(false);
+    delay(20);
+    leds_tristate_outputs(false);
+    sense_enable();
+    sense_start_ms = millis();
+    buzzer_pattern_safe();
+    Serial.println("-> SAFE: 24V AUS, Sense EIN.");
+  }
+}
+
+static void print_help(){
+  Serial.println("\n=== Steuerung ===");
+  Serial.println("  a -> ARMED (Sense AUS, 24V EIN)");
+  Serial.println("  s -> SAFE  (24V AUS, Sense EIN)");
+  Serial.println("  h -> Hilfe");
+}
+
+void setup(){
+  Serial.begin(115200);
+
+  power_begin();        // 24V AUS
+  mux_begin();
+  leds_begin();
+  display_begin();
+  battery_begin();
+  buzzer_begin();
+  radio_begin();
+  temp_begin();
+  heater_begin();               // Heizung standardmäßig erlaubt (Default laut Config)
+  heater_reset_preheat_timer(); // Vorwärm-Timer starten
+
+  // Wenn du möchtest, nach dem Boot wieder freigeben:
+  heater_set_kill(false);  // optional: Heizung frei nach Init
+
+  leds_selftest(SELFTEST_MS);
+  display_show_boot("OLED/Batt/RF OK");
+
+  // Start SAFE
+  sense_begin();
+  sense_start_ms = millis();
+  set_armed(false);
+
+  ui_tick_ms = millis();
+  Serial.print("Auto-Stop in "); Serial.print(SENSE_TIMEOUT_MS/1000); Serial.println(" s.");
+  print_help();
+}
+
+void loop(){
+  // serielle Umschaltung optional
+  while (Serial.available()){
+    char c = (char)Serial.read();
+    if (c=='a'||c=='A'){ set_armed(true); }
+    else if (c=='s'||c=='S'){ set_armed(false); }
+    else if (c=='h'||c=='H'){ print_help(); }
+  }
+
+  // Sense/Timeout
+  if (!armed){
+    if (millis() - sense_start_ms < SENSE_TIMEOUT_MS){
+      sense_scan_once();
+      delay(80);
+    } else {
+      sense_stop(!LED_KEEP_AFTER_SENSE);
+      delay(200);
+    }
+  } else {
+    delay(80);
+  }
+
+  // Akku-Warnung (Ticken), max alle 2 s
+  static uint32_t lowbat_tick_ms = 0;
+  if (battery_low()){
+    if (millis() - lowbat_tick_ms > 2000){
+      buzzer_tick_lowbat();
+      lowbat_tick_ms = millis();
+    }
+  }
+
+  // Heizer-Automatik (alle ~500 ms)
+static uint32_t last_mgr = 0;
+if (millis() - last_mgr > 500){
+  float v  = battery_read_voltage();
+  g_last_tempC = temp_read_c();
+  heater_manage(armed, g_last_tempC, v);
+  last_mgr = millis();
+}
+
+// OLED: Seite alle 2000 ms weiterblättern, Redraw alle 250 ms
+uint32_t now = millis();
+if (now - ui_page_ms > 2000){
+  ui_page = (ui_page + 1) % 4;   // jetzt 4 Seiten: 0..3
+  ui_page_ms = now;
+}
+static uint32_t ui_draw_ms = 0;
+if (now - ui_draw_ms > 250){
+  int   pct = battery_percent();
+  float v   = battery_read_voltage();
+  int   cnt = sense_count_connected();
+  bool  heatOn = !heater_is_killed();
+  display_show_page(ui_page, BOX_CHANNEL, pct, v, armed, cnt, 30, g_last_tempC, heatOn);
+  ui_draw_ms = now;
+}
+}
+
+
+===== END src/empfaenger/ZuendpulsEv1.ino =====
 
 ===== BEGIN src/empfaenger/battery.h =====
 #pragma once
@@ -53,6 +327,551 @@ bool battery_low(){
 
 ===== END src/empfaenger/battery.cpp =====
 
+===== BEGIN src/empfaenger/buzzer.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+
+void buzzer_begin();
+void buzzer_beep(uint16_t ms);
+void buzzer_pattern_armed();      // kurzes Muster bei ARMED
+void buzzer_pattern_safe();       // kurzes Muster bei SAFE
+void buzzer_tick_lowbat();        // kurzer Tick bei LowBatt
+
+===== END src/empfaenger/buzzer.h =====
+
+===== BEGIN src/empfaenger/buzzer.cpp =====
+#include "buzzer.h"
+
+void buzzer_begin(){
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+void buzzer_beep(uint16_t ms){
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(ms);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+void buzzer_pattern_armed(){
+  buzzer_beep(120); delay(100); buzzer_beep(200);
+}
+void buzzer_pattern_safe(){
+  buzzer_beep(80); delay(60); buzzer_beep(80);
+}
+void buzzer_tick_lowbat(){
+  buzzer_beep(30);
+}
+
+===== END src/empfaenger/buzzer.cpp =====
+
+===== BEGIN src/empfaenger/config.h =====
+#pragma once
+#include <Arduino.h>
+
+// ===== LED-Ketten-Layout =====
+constexpr bool LED_FIRST      = false; // false = [FIRE][LED] (dein Board)
+constexpr bool LED_ACTIVE_LOW = false;  // LED leuchtet bei 0
+
+// ===== ADC / Physik =====
+constexpr int   ADC_BITS    = 12;
+constexpr float VREF_ADC    = 3.3f;
+constexpr float DIV_GAIN    = 1.879f;               // Vy = Vadc * DIV_GAIN
+constexpr float TH_ZENER_VY = 4.3f;                 // Clamp-Erkennung
+constexpr float ADC_MAX     = float((1 << ADC_BITS) - 1);
+
+// ===== Erkennung (5V-Messmodus) =====
+constexpr int RAW_ON  = 700;                        // Ein-Schwelle
+constexpr int RAW_OFF = 200;                        // Aus-Schwelle
+
+// ===== Pin-Map =====
+struct Bus { int ser, clk, rclk; };
+
+constexpr int BOARDS = 4;
+constexpr int CH_PER = 8;
+constexpr int TOTAL  = BOARDS * CH_PER;
+constexpr int TOTAL_CH = TOTAL;                     // Alias
+
+// Shiftregister-Busse (pro Board)
+constexpr Bus SR[BOARDS] = {
+  {32,33,34},  // Board 0 -> ZK 1..8
+  {35,36,37},  // Board 1 -> ZK 9..16
+  {38,39,40},  // Board 2 -> ZK 17..24
+  {15,16,17}   // Board 3 -> ZK 25..32
+};
+constexpr int SR_OE_PIN = 12;                       // 74HC595 OE# (aktiv-LOW, gemeinsam)
+constexpr int PIN_BTS   = 20;                       // 24V Enable (LOW = AUS)
+
+// MUX
+constexpr int PIN_MUX_A0 = 21, PIN_MUX_A1 = 22, PIN_MUX_A2 = 23;
+constexpr int PIN_MUX_E[BOARDS] = {28,29,30,31};    // LOW = aktiv je Board
+constexpr int PIN_MUX_Z[BOARDS] = {24,25,26,27};    // ADC-Eingänge je Board
+
+// ===== Soft-Shift (ohne Serien-R: Kanten entschärfen) =====
+constexpr uint8_t SHIFT_US       = 2;
+constexpr uint8_t LATCH_GUARD_US = 5;
+
+// ===== Betriebs-Optionen =====
+constexpr uint32_t SELFTEST_MS          = 2500;     // Dauer LED-Selftest beim Boot
+constexpr uint32_t SENSE_TIMEOUT_MS     = 180000;   // 3 min Messzeit
+constexpr bool     LED_KEEP_AFTER_SENSE = true;     // true: LED-Latch bleibt an
+
+// ===== ARMED/SAFE Umschaltung =====
+// Optionaler Hardware-Eingang für "scharf":
+// -1 = deaktiviert (nur Software-Umschaltung), sonst Pin-Nummer eintragen.
+// Aktiv-Logik: HIGH = scharf (bei interner PULLUP typ. Taster nach GND -> active-low ändern)
+constexpr int  PIN_ARM          = -1;     // z.B. 14 wenn du einen Schalter am Teensy nutzt
+constexpr bool ARM_ACTIVE_HIGH  = true;   // true: HIGH = scharf, false: LOW = scharf
+constexpr bool LED_KEEP_WHEN_ARMED = false;// wenn scharf -> Messung AUS; LEDs anlassen?
+
+
+// ===== Auto-Fire-Demo (Trockenlauf) =====
+constexpr bool     AUTO_FIRE_DEMO       = false;   // Autostart-Demo aktiv
+constexpr uint32_t START_ARM_DELAY_MS   = 3000;   // 3 s bis ARMED
+constexpr uint32_t FIRE_PULSE_MS        = 1000;   // Pulsdauer je Kanal
+constexpr uint32_t FIRE_GAP_MS          = 400;    // Pause zwischen Kanälen
+
+// ===== Buzzer / Batterie / Funk =====
+constexpr int  BUZZER_PIN     = 6;
+
+// Batterie-ADC (Teensy A0 = Pin 14)
+constexpr int   BAT_ADC_PIN   = 14;
+// Teiler (ANPASSEN!): Vbat -- R_TOP --(ADC)-- R_BOT -- GND
+constexpr float BAT_R_TOP  = 100000.0f; // 100k
+constexpr float BAT_R_BOT  = 12000.0f;  // 12k
+
+// LiFePO₄ 8s
+constexpr float BAT_V_MIN  = 22.0f;     // leer (unter Last)
+constexpr float BAT_V_MAX  = 29.2f;     // voll
+constexpr float BAT_V_WARN = 24.0f;     // Warnung
+constexpr float BAT_V_CLEAR= 24.6f;     // Hysterese
+
+
+
+// Funk-Pins (E32/LoRa-Style: M0/M1/AUX + UART)
+constexpr int  RADIO_RX_PIN   = 0;   // Teensy RX1
+constexpr int  RADIO_TX_PIN   = 1;   // Teensy TX1
+constexpr int  RADIO_AUX_PIN  = 2;   // AUX (Input)
+constexpr int  RADIO_M0_PIN   = 3;   // M0  (Output)
+constexpr int  RADIO_M1_PIN   = 4;   // M1  (Output)
+constexpr long RADIO_BAUD     = 9600;
+
+// Box-Kanal/ID (nur Anzeige erstmal)
+constexpr uint8_t BOX_CHANNEL = 1;   // <- deine Box-ID/Ansprechkanal eintragen
+
+
+// ===== Deep-Voltage Schutz fürs ARMED (hast du schon) =====
+constexpr float FIRE_INHIBIT_V = 20.5f;   // darunter kein ARMED
+
+// ===== Temperatur / Heizung (Auto) =====
+constexpr int   TEMP_ADC_PIN             = 41;     // ADC für Temperatur
+constexpr bool  TEMP_USE_TMP36           = true;
+constexpr float TEMP_MV_OFFSET           = 500.0f;
+constexpr float TEMP_MV_PER_C            = 10.0f;
+
+// Heizen: Hysterese (z.B. unter 5°C ein, über 15°C aus)
+constexpr float TEMP_HEAT_ON_C           = 5.0f;
+constexpr float TEMP_HEAT_OFF_C          = 15.0f;
+
+// Akku-Wächter fürs Heizen (nicht unter X Volt leer saugen)
+constexpr float HEAT_MIN_V_RUN           = 23.6f;  // darunter Heizen AUS
+constexpr float HEAT_RESUME_V            = 24.2f;  // erst ab hier wieder erlauben
+
+// Safety: max. Vorwärmzeit
+constexpr uint32_t HEAT_MAX_PREHEAT_MS   = 15UL * 60UL * 1000UL; // 15 min
+
+// Verhalten
+constexpr bool HEATER_AUTOKILL_EN        = true;   // Auto-Logik aktiv
+constexpr int  HEATER_KILL_PIN           = 11;     // Kill-Leitung zur Heizung
+constexpr bool HEATER_KILL_ACTIVE_HIGH   = true;   // HIGH = Heizung AUS
+
+// WICHTIG: Default beim Einschalten (falls Teensy tot/kalt): Heizung EIN
+constexpr bool HEATER_DEFAULT_ON_AT_BOOT = true;   // default: heizen erlaubt
+constexpr bool HEATER_FORCE_OFF_WHEN_ARMED = true; // bei ARMED immer Heizung AUS
+
+===== END src/empfaenger/config.h =====
+
+===== BEGIN src/empfaenger/display.h =====
+#pragma once
+#include <Arduino.h>
+
+void display_begin();
+void display_show_boot(const char* msg);
+
+// page: 0=BOX, 1=BAT, 2=COUNT, 3=TEMP/HEAT
+void display_show_page(uint8_t page,
+                       uint8_t boxChannel,
+                       int batPct, float vbat,
+                       bool armed,
+                       int connected, int maxZ,
+                       float tempC, bool heatOn);
+
+===== END src/empfaenger/display.h =====
+
+===== BEGIN src/empfaenger/display.cpp =====
+#include "display.h"
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+static const int SCREEN_WIDTH  = 128;
+static const int SCREEN_HEIGHT = 64;
+static const uint8_t I2C_ADDR  = 0x3C;
+
+static Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+static int tW(const char* s, uint8_t sz){ int n=0; while(*s){n++; s++;} return n*6*sz; }
+static int tH(uint8_t sz){ return 8*sz; }
+static void printCentered(const char* s, int y, uint8_t sz){
+  int x = (SCREEN_WIDTH - tW(s,sz))/2; if (x<0) x=0;
+  oled.setCursor(x,y); oled.setTextSize(sz); oled.print(s);
+}
+
+void display_begin(){
+  Wire.begin(); Wire.setClock(400000);
+  oled.begin(SSD1306_SWITCHCAPVCC, I2C_ADDR);
+  oled.clearDisplay(); oled.setTextColor(SSD1306_WHITE); oled.display();
+}
+
+void display_show_boot(const char* msg){
+  oled.clearDisplay();
+  oled.fillRect(0,0,SCREEN_WIDTH,16, SSD1306_WHITE);
+  oled.setTextColor(SSD1306_BLACK);
+  printCentered("Zundsystem", 4, 1);
+  oled.setTextColor(SSD1306_WHITE);
+  printCentered("Selftest...", 26, 2);
+  if (msg && *msg) printCentered(msg, 50, 1);
+  oled.display();
+}
+
+static void badge(bool armed){
+  const char* s = armed ? "ARMED" : "SAFE";
+  int w = 6 * (armed?5:4) + 8;
+  oled.drawRect(0,0,w,14, SSD1306_WHITE);
+  oled.setCursor(4,3); oled.setTextSize(1); oled.print(s);
+}
+
+void display_show_page(uint8_t page,
+                       uint8_t boxChannel,
+                       int batPct, float vbat,
+                       bool armed,
+                       int connected, int maxZ,
+                       float tempC, bool heatOn){
+  if (batPct<0) batPct=0; if (batPct>100) batPct=100;
+  if (connected<0) connected=0; if (connected>maxZ) connected=maxZ;
+
+  oled.clearDisplay();
+  badge(armed);
+
+  if (page == 0){
+    // BOX
+    char buf[16];
+    snprintf(buf,sizeof(buf),"BOX %d", boxChannel);
+    printCentered(buf, 22, 3);
+
+  } else if (page == 1){
+    // BAT
+    char pbuf[16]; snprintf(pbuf,sizeof(pbuf), "%d%%", batPct);
+    printCentered(pbuf, 18, 3);
+    char vbuf[16]; snprintf(vbuf,sizeof(vbuf), "%.1fV", vbat);
+    printCentered(vbuf, SCREEN_HEIGHT - tH(2) - 2, 2);
+
+  } else if (page == 2){
+    // COUNT
+    char cbuf[24]; snprintf(cbuf,sizeof(cbuf), "ZUNDER %d/%d", connected, maxZ);
+    printCentered(cbuf, 22, 2);
+
+  } else {
+    // TEMP / HEAT
+    char tbuf[16]; snprintf(tbuf,sizeof(tbuf), "%.0f\xB0""C", tempC); // große °C
+    printCentered(tbuf, 14, 3);
+    char hbuf[16]; snprintf(hbuf,sizeof(hbuf), "HEAT:%s", heatOn ? "ON" : "OFF");
+    printCentered(hbuf, SCREEN_HEIGHT - tH(2) - 2, 2);
+  }
+
+  oled.display();
+}
+
+===== END src/empfaenger/display.cpp =====
+
+===== BEGIN src/empfaenger/fire.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+
+void fire_begin();
+void fire_clear_all();                     // alle FIRE=0
+void fire_pulse_ch(uint8_t ch, uint32_t ms, bool show_led); // ch=0..31
+void fire_pulse_zk(uint8_t zk, uint32_t ms, bool show_led); // zk=1..32
+
+===== END src/empfaenger/fire.h =====
+
+===== BEGIN src/empfaenger/fire.cpp =====
+#include "fire.h"
+#include "mapping.h"
+#include "leds.h"
+
+static uint8_t fireMaskBoard[BOARDS] = {0,0,0,0};
+
+void fire_begin(){
+  for(int b=0;b<BOARDS;b++){ fireMaskBoard[b]=0; io_write_board(b, 0x00, 0x00); }
+}
+
+void fire_clear_all(){
+  for(int b=0;b<BOARDS;b++){ fireMaskBoard[b]=0; io_write_board(b, 0x00, 0x00); }
+}
+
+void fire_pulse_ch(uint8_t ch, uint32_t ms, bool show_led){
+  if (ch >= TOTAL_CH) return;
+  int b = ch / CH_PER;
+  int k = ch % CH_PER;
+  uint8_t fireBit = (uint8_t)(1u<<k);
+  uint8_t ledBit  = (uint8_t)(1u<<LED_MAP[b][k]);
+
+  // Setzen
+  fireMaskBoard[b] |= fireBit;
+  io_write_board(b, fireMaskBoard[b], show_led ? ledBit : 0x00);
+
+  delay(ms); // Pulsdauer
+
+  // Rücksetzen
+  fireMaskBoard[b] &= ~fireBit;
+  io_write_board(b, fireMaskBoard[b], 0x00);
+}
+
+void fire_pulse_zk(uint8_t zk, uint32_t ms, bool show_led){
+  if (zk < 1 || zk > 32) return;
+  uint8_t ch = CH_FROM_ZK[zk-1];
+  fire_pulse_ch(ch, ms, show_led);
+}
+
+===== END src/empfaenger/fire.cpp =====
+
+===== BEGIN src/empfaenger/leds.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+
+void leds_begin();
+void leds_write_board(int b, uint8_t ledByte); // FIRE bleibt 0x00
+void leds_all_off();
+void leds_selftest(uint32_t duration_ms);
+void leds_tristate_outputs(bool tristate);
+
+// NEU: gleichzeitiges Schreiben von FIRE & LED für ein Board
+void io_write_board(int b, uint8_t fireMask, uint8_t ledMask);
+
+===== END src/empfaenger/leds.h =====
+
+===== BEGIN src/empfaenger/leds.cpp =====
+#include "leds.h"
+#include "mapping.h"
+
+static inline void sr_shift_byte(int ser,int clk,uint8_t v){
+  for(int i=7;i>=0;--i){
+    digitalWrite(ser,(v>>i)&1);
+    delayMicroseconds(1);
+    digitalWrite(clk,HIGH); delayMicroseconds(SHIFT_US);
+    digitalWrite(clk,LOW);  delayMicroseconds(SHIFT_US);
+  }
+}
+
+void leds_tristate_outputs(bool tristate){
+  pinMode(SR_OE_PIN,OUTPUT);
+  digitalWrite(SR_OE_PIN, tristate ? HIGH : LOW);
+}
+
+// === NEU: FIRE & LED gleichzeitig schreiben ===
+void io_write_board(int b, uint8_t fireMask, uint8_t ledMask){
+  uint8_t led = LED_ACTIVE_LOW ? (uint8_t)~ledMask : ledMask;
+  leds_tristate_outputs(true);                 // OE HIGH
+  delayMicroseconds(LATCH_GUARD_US);
+  digitalWrite(SR[b].rclk,LOW);
+  if (LED_FIRST){                              // [LED][FIRE]
+    sr_shift_byte(SR[b].ser,SR[b].clk,led);
+    sr_shift_byte(SR[b].ser,SR[b].clk,fireMask);
+  } else {                                     // [FIRE][LED]
+    sr_shift_byte(SR[b].ser,SR[b].clk,fireMask);
+    sr_shift_byte(SR[b].ser,SR[b].clk,led);
+  }
+  delayMicroseconds(LATCH_GUARD_US);
+  digitalWrite(SR[b].rclk,HIGH);
+  delayMicroseconds(LATCH_GUARD_US);
+  digitalWrite(SR[b].rclk,LOW);
+  leds_tristate_outputs(false);                // OE LOW (sichtbar/aktiv)
+}
+
+void leds_begin(){
+  leds_tristate_outputs(true); // Outputs AUS
+  for(int b=0;b<BOARDS;b++){
+    pinMode(SR[b].ser,OUTPUT); pinMode(SR[b].clk,OUTPUT); pinMode(SR[b].rclk,OUTPUT);
+    digitalWrite(SR[b].ser,LOW); digitalWrite(SR[b].clk,LOW); digitalWrite(SR[b].rclk,LOW);
+  }
+  for(int b=0;b<BOARDS;b++) leds_write_board(b, 0x00);
+}
+
+void leds_write_board(int b, uint8_t ledByte){
+  io_write_board(b, /*fire*/0x00, /*led*/ledByte);
+}
+
+void leds_all_off(){
+  for(int b=0;b<BOARDS;b++) leds_write_board(b, 0x00);
+}
+
+// … (Selftest unverändert wie bei dir; benutzt LED_MAP)
+void leds_selftest(uint32_t duration_ms){
+  const uint32_t t0 = millis();
+  // 1) Wipe pro Board vorwärts
+  for(int b=0;b<BOARDS && millis()-t0 < duration_ms; ++b){
+    for(int k=0;k<8 && millis()-t0 < duration_ms; ++k){
+      uint8_t bit = LED_MAP[b][k];
+      leds_write_board(b, (uint8_t)(1u<<bit));
+      delay(50);
+    }
+    leds_write_board(b, 0x00);
+  }
+  // 2) Ping-Pong
+  for(int r=0; r<2 && millis()-t0 < duration_ms; ++r){
+    for(int step=0; step<8 && millis()-t0 < duration_ms; ++step){
+      for(int b=0;b<BOARDS;++b){
+        uint8_t bit = LED_MAP[b][step];
+        leds_write_board(b, (uint8_t)(1u<<bit));
+      }
+      delay(60);
+    }
+    for(int step=6; step>0 && millis()-t0 < duration_ms; --step){
+      for(int b=0;b<BOARDS;++b){
+        uint8_t bit = LED_MAP[b][step];
+        leds_write_board(b, (uint8_t)(1u<<bit));
+      }
+      delay(60);
+    }
+  }
+  // 3) All-ON blink
+  for(int n=0; n<2 && millis()-t0 < duration_ms; ++n){
+    for(int b=0;b<BOARDS;++b) leds_write_board(b, 0xFF);
+    delay(120);
+    for(int b=0;b<BOARDS;++b) leds_write_board(b, 0x00);
+    delay(120);
+  }
+}
+
+===== END src/empfaenger/leds.cpp =====
+
+===== BEGIN src/empfaenger/mapping.h =====
+#pragma once
+#include <stdint.h>
+
+extern const uint8_t CH_FROM_ZK[32];
+extern const uint8_t ZK_FROM_CH[32];
+extern const uint8_t LED_MAP[4][8];
+
+===== END src/empfaenger/mapping.h =====
+
+===== BEGIN src/empfaenger/mapping.cpp =====
+#include "mapping.h"
+
+// Zündkanal (1..32) -> physischer CH (0..31)
+const uint8_t CH_FROM_ZK[32] = {
+   7,6,5,4,3,2,1,0,  15,14,13,12,11,10,9,8,
+  23,22,21,20,19,18,17,16,  31,30,29,28,27,26,25,24
+};
+// physischer CH (0..31) -> Zündkanal (1..32)
+const uint8_t ZK_FROM_CH[32] = {
+   8,7,6,5,4,3,2,1,  16,15,14,13,12,11,10,9,
+  24,23,22,21,20,19,18,17,  32,31,30,29,28,27,26,25
+};
+
+// LED-Mapping (lokaler Kanal k -> LED-Bit) – gespiegelt auf allen Boards
+const uint8_t LED_MAP[4][8] = {
+  {7,6,5,4,3,2,1,0},  // Board 0
+  {7,6,5,4,3,2,1,0},  // Board 1
+  {7,6,5,4,3,2,1,0},  // Board 2
+  {7,6,5,4,3,2,1,0}   // Board 3
+};
+
+===== END src/empfaenger/mapping.cpp =====
+
+===== BEGIN src/empfaenger/mux.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+
+void mux_begin();
+void mux_select(int board, int ch); // aktiviert nur dieses Board/ch
+void mux_disable_all();
+
+===== END src/empfaenger/mux.h =====
+
+===== BEGIN src/empfaenger/mux.cpp =====
+#include "mux.h"
+
+static inline void muxAddr(uint8_t ch){
+  digitalWrite(PIN_MUX_A0, ch & 1);
+  digitalWrite(PIN_MUX_A1,(ch>>1)&1);
+  digitalWrite(PIN_MUX_A2,(ch>>2)&1);
+}
+
+void mux_begin(){
+  pinMode(PIN_MUX_A0,OUTPUT); pinMode(PIN_MUX_A1,OUTPUT); pinMode(PIN_MUX_A2,OUTPUT);
+  for(int b=0;b<BOARDS;b++){ pinMode(PIN_MUX_E[b],OUTPUT); digitalWrite(PIN_MUX_E[b],HIGH); }
+}
+void mux_disable_all(){ for(int i=0;i<BOARDS;i++) digitalWrite(PIN_MUX_E[i],HIGH); }
+void mux_select(int board, int ch){
+  mux_disable_all();
+  digitalWrite(PIN_MUX_E[board],LOW);
+  delay(1);
+  muxAddr(ch);
+  delay(8);
+}
+
+===== END src/empfaenger/mux.cpp =====
+
+===== BEGIN src/empfaenger/power.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+#include "mux.h"    // für optionalen Check
+
+void power_begin();                 // setzt PIN_BTS sicher LOW
+void power_set_24v(bool enable);    // true = 24V an (PIN_BTS=HIGH), false = 24V aus
+bool power_is_24v();
+
+===== END src/empfaenger/power.h =====
+
+===== BEGIN src/empfaenger/power.cpp =====
+#include "power.h"
+
+static bool s_is24v = false;
+
+void power_begin(){
+  pinMode(PIN_BTS, OUTPUT);
+  digitalWrite(PIN_BTS, LOW);   // Start immer 24V AUS
+  s_is24v = false;
+}
+
+// harte Umschaltung mit kleinen Schutzzeiten
+void power_set_24v(bool enable){
+  if (enable == s_is24v) return;
+
+  if (enable){
+    // 24V EIN
+    digitalWrite(PIN_BTS, HIGH);
+    delay(5);                   // kleiner Guard
+    s_is24v = true;
+  } else {
+    // 24V AUS
+    digitalWrite(PIN_BTS, LOW);
+    delay(20);                  // Zeit zum Entladen der Rail
+    s_is24v = false;
+  }
+}
+
+bool power_is_24v(){ return s_is24v; }
+
+===== END src/empfaenger/power.cpp =====
+
 ===== BEGIN src/empfaenger/radio.h =====
 #pragma once
 #include <Arduino.h>
@@ -89,10 +908,107 @@ bool radio_ready(){
 
 ===== END src/empfaenger/radio.cpp =====
 
-===== lib/common/Packet.h (MISSING) =====
+===== BEGIN src/empfaenger/sense.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
 
-===== lib/common/Packet.cpp (MISSING) =====
+void sense_begin();
+void sense_scan_once();                 // aktualisiert LEDs (Latch) und loggt Änderungen
+void sense_stop(bool clear_leds);       // Messung „aus“ + LEDs optional löschen
+void sense_enable();                    // Messung wieder einschalten
+bool sense_is_enabled();
+int  sense_count_connected();           // <-- NEU: Anzahl erkannter Kanäle
 
-===== lib/common/CRC16.h (MISSING) =====
+===== END src/empfaenger/sense.h =====
 
-===== lib/common/CRC16.cpp (MISSING) =====
+===== BEGIN src/empfaenger/sense.cpp =====
+#include "sense.h"
+#include "leds.h"
+#include "mux.h"
+#include "mapping.h"
+
+static bool    connected[TOTAL_CH] = {0};
+static uint8_t ledMask[BOARDS]     = {0,0,0,0};
+static bool    sensing_enabled     = true;
+
+static inline float rawToVadc(int raw){ return (raw / ADC_MAX) * VREF_ADC; }
+static inline float vadcToVy(float v){ return v * DIV_GAIN; }
+
+void sense_begin(){
+  analogReadResolution(ADC_BITS);
+  analogReadAveraging(8);
+  for(int b=0;b<BOARDS;b++){ ledMask[b]=0; leds_write_board(b,0x00); }
+  for(int i=0;i<TOTAL_CH;i++) connected[i]=false;
+  sensing_enabled = true;
+}
+
+void sense_stop(bool clear_leds){
+  sensing_enabled = false;
+  mux_disable_all();
+  if (clear_leds){
+    leds_all_off();
+    leds_tristate_outputs(true);   // OE HIGH -> Ausgänge AUS (stromsparend)
+  }
+}
+
+void sense_enable(){
+  sensing_enabled = true;          // LEDs/Masken bleiben bestehen
+  leds_tristate_outputs(false);    // sichtbar lassen
+}
+
+
+int sense_count_connected(){
+  int n=0;
+  for(int i=0;i<TOTAL_CH;i++) if (connected[i]) n++;
+  return n;
+}
+
+bool sense_is_enabled(){ return sensing_enabled; }
+
+void sense_scan_once(){
+  if (!sensing_enabled) return;
+
+  for(int ch=0; ch<TOTAL_CH; ++ch){
+    int b = ch / CH_PER, k = ch % CH_PER;
+
+    mux_select(b,k);
+
+    // 8x Mittelwert
+    int raw = 0;
+    for(int i=0;i<8;i++){ raw += analogRead(PIN_MUX_Z[b]); delayMicroseconds(150); }
+    raw /= 8;
+
+    mux_disable_all();
+
+    float vy = vadcToVy(rawToVadc(raw));
+    bool prev  = connected[ch];
+    bool now   = prev;
+    bool clamp = (vy >= TH_ZENER_VY);
+
+    if (!clamp){
+      if (raw > RAW_ON)       now = true;
+      else if (raw < RAW_OFF) now = false;
+    } else now = false;
+
+    if (now != prev){
+      connected[ch] = now;
+
+      // LED-Mapping: lokaler Kanal k -> LED-Bit auf Board b
+      uint8_t ledBit = LED_MAP[b][k];
+      if (now)  ledMask[b] |=  (1u << ledBit);
+      else      ledMask[b] &= ~(1u << ledBit);
+
+      leds_write_board(b, ledMask[b]);
+
+      uint8_t zk = ZK_FROM_CH[ch];
+      Serial.print("ZK"); Serial.print(zk);
+      Serial.print(" (CH"); Serial.print(ch); Serial.print(") -> ");
+      Serial.print(now ? "DURCHGANG" : "offen");
+      Serial.print("  raw="); Serial.print(raw);
+      Serial.print("  Vy=");  Serial.print(vy,3); Serial.println("V");
+    }
+  }
+}
+
+===== END src/empfaenger/sense.cpp =====
