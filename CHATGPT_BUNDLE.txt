@@ -1,0 +1,98 @@
+
+===== src/empfaenger/main.cpp (MISSING) =====
+
+===== BEGIN src/empfaenger/battery.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+
+void  battery_begin();
+float battery_read_voltage();          // Vbat in Volt
+int   battery_percent();               // 0..100
+bool  battery_low();                   // Warnung aktiv (mit Hysterese)
+
+===== END src/empfaenger/battery.h =====
+
+===== BEGIN src/empfaenger/battery.cpp =====
+#include "battery.h"
+
+static bool s_low = false;
+
+void battery_begin(){
+  pinMode(BAT_ADC_PIN, INPUT);
+  analogReadResolution(ADC_BITS);
+  analogReadAveraging(8);
+}
+
+static float adc_to_vbat(int raw){
+  float v_adc = (raw / ADC_MAX) * VREF_ADC;
+  float div_gain = (BAT_R_TOP + BAT_R_BOT) / BAT_R_BOT;
+  return v_adc * div_gain;
+}
+
+float battery_read_voltage(){
+  long acc=0;
+  for(int i=0;i<16;i++){ acc += analogRead(BAT_ADC_PIN); delayMicroseconds(150); }
+  int raw = acc / 16;
+  return adc_to_vbat(raw);
+}
+
+int battery_percent(){
+  float v = battery_read_voltage();
+  if (v <= BAT_V_MIN) return 0;
+  if (v >= BAT_V_MAX) return 100;
+  return int( (v - BAT_V_MIN) * 100.0f / (BAT_V_MAX - BAT_V_MIN) + 0.5f );
+}
+
+bool battery_low(){
+  float v = battery_read_voltage();
+  if (!s_low && v <= BAT_V_WARN) s_low = true;
+  else if (s_low && v >= BAT_V_CLEAR) s_low = false;
+  return s_low;
+}
+
+===== END src/empfaenger/battery.cpp =====
+
+===== BEGIN src/empfaenger/radio.h =====
+#pragma once
+#include <Arduino.h>
+#include "config.h"
+
+void radio_begin();             // setzt M0/M1, startet UART
+bool radio_ready();             // AUX = HIGH?
+void radio_set_normal_mode();   // M1=0, M0=0
+
+===== END src/empfaenger/radio.h =====
+
+===== BEGIN src/empfaenger/radio.cpp =====
+#include "radio.h"
+
+void radio_begin(){
+  pinMode(RADIO_M0_PIN, OUTPUT);
+  pinMode(RADIO_M1_PIN, OUTPUT);
+  pinMode(RADIO_AUX_PIN, INPUT);    // ggf. INPUT_PULLUP falls offen
+  radio_set_normal_mode();
+  // UART1 startet – wenn Modul stromlos ist, stört das nicht
+  Serial1.begin(RADIO_BAUD);
+}
+
+void radio_set_normal_mode(){
+  digitalWrite(RADIO_M0_PIN, LOW);
+  digitalWrite(RADIO_M1_PIN, LOW);
+  delay(5);
+}
+
+bool radio_ready(){
+  int lvl = digitalRead(RADIO_AUX_PIN);
+  return (lvl != 0); // HIGH=bereit (je nach Modul)
+}
+
+===== END src/empfaenger/radio.cpp =====
+
+===== lib/common/Packet.h (MISSING) =====
+
+===== lib/common/Packet.cpp (MISSING) =====
+
+===== lib/common/CRC16.h (MISSING) =====
+
+===== lib/common/CRC16.cpp (MISSING) =====
