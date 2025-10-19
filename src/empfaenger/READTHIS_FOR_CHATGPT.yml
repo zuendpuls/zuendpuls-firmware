@@ -1,0 +1,19 @@
+# Welche Dateien ich immer laden soll (Reihenfolge egal)
+watch:
+  - src/empfaenger/main.cpp
+  - src/empfaenger/battery.h
+  - src/empfaenger/battery.cpp
+  - src/empfaenger/radio.h
+  - src/empfaenger/radio.cpp
+  - lib/common/Packet.h
+  - lib/common/Packet.cpp
+  - lib/common/CRC16.h
+  - lib/common/CRC16.cpp
+
+# Optional: Metadaten für klare Kommunikation
+meta:
+  project: Zuendpuls Firmware
+  board: Teensy 4.1
+  protocol_version: 1
+  notes: |
+    Empfaenger-Prioritäten: ACK/Retry, ARM/FIRE-Lock, 24V-Clamp-Status, Continuity-Report.
