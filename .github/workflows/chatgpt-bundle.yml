@@ -23,19 +23,29 @@ jobs:
       - name: Install deps
         run: pip install pyyaml
 
-      - name: Make bundle from manifest
+      - name: Make bundle from manifests
         run: |
           python - << 'PY'
-          import yaml, os, sys, pathlib
-          manifest_path = "src/empfaenger/READTHIS_FOR_CHATGPT.yml"
+          import os, glob, yaml, pathlib, sys
+          manifests = glob.glob("**/READTHIS_FOR_CHATGPT.yml", recursive=True)
+          if not manifests:
+            print("No manifest files found.", file=sys.stderr); sys.exit(1)
+          watch = []
+          for mf in manifests:
+            with open(mf, "r", encoding="utf-8") as f:
+              d = yaml.safe_load(f) or {}
+            w = d.get("watch", [])
+            # optional: relative Pfade absichern
+            watch.extend(w)
+          # Duplikate entfernen, Reihenfolge stabil halten
+          seen, merged = set(), []
+          for p in watch:
+            if p not in seen:
+              seen.add(p); merged.append(p)
+
           out_path = "CHATGPT_BUNDLE.txt"
-          if not os.path.exists(manifest_path):
-            print("Manifest not found", file=sys.stderr); sys.exit(1)
-          with open(manifest_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-          watch = data.get("watch", [])
           lines = []
-          for rel in watch:
+          for rel in merged:
             p = pathlib.Path(rel)
             if not p.exists():
               lines.append(f"\n===== {rel} (MISSING) =====\n")
@@ -46,7 +56,7 @@ jobs:
             lines.append(f"\n===== END {rel} =====\n")
           with open(out_path, "w", encoding="utf-8") as out:
             out.write("".join(lines))
-          print(f"Wrote {out_path} with {len(watch)} files.")
+          print(f"Wrote {out_path} with {len(merged)} files from {len(manifests)} manifests.")
           PY
 
       - name: Commit bundle
@@ -54,5 +64,5 @@ jobs:
           git config user.name "repo-bot"
           git config user.email "repo-bot@users.noreply.github.com"
           git add CHATGPT_BUNDLE.txt
-          git commit -m "chore: update CHATGPT_BUNDLE from manifest" || echo "No changes"
+          git commit -m "chore: update CHATGPT_BUNDLE from manifests" || echo "No changes"
           git push
