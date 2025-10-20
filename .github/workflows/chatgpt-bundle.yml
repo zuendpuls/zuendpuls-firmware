@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # sichert Commit/Push
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -23,24 +25,28 @@ jobs:
       - name: Install deps
         run: pip install pyyaml
 
-      - name: Make bundle from manifests
+      - name: Make bundle from manifests (debug)
         run: |
           python - << 'PY'
-          import os, glob, yaml, pathlib, sys
+          import os, glob, yaml, pathlib, sys, datetime
           manifests = glob.glob("**/READTHIS_FOR_CHATGPT.yml", recursive=True)
+          print(f"[INFO] Found manifests: {manifests}")
           if not manifests:
-            print("No manifest files found.", file=sys.stderr); sys.exit(1)
+            print("[ERROR] No manifest files found.", file=sys.stderr); sys.exit(1)
+
           watch = []
           for mf in manifests:
             with open(mf, "r", encoding="utf-8") as f:
               d = yaml.safe_load(f) or {}
-            w = d.get("watch", [])
-            # optional: relative Pfade absichern
-            watch.extend(w)
-          # Duplikate entfernen, Reihenfolge stabil halten
+            files = d.get("watch", [])
+            print(f"[INFO] From {mf} watch: {files}")
+            watch.extend(files)
+
+          # de-duplicate preserving order
           seen, merged = set(), []
           for p in watch:
-            if p not in seen:
+            p = p.strip()
+            if p and p not in seen:
               seen.add(p); merged.append(p)
 
           out_path = "CHATGPT_BUNDLE.txt"
@@ -48,21 +54,28 @@ jobs:
           for rel in merged:
             p = pathlib.Path(rel)
             if not p.exists():
+              print(f"[WARN] Missing: {rel}")
               lines.append(f"\n===== {rel} (MISSING) =====\n")
               continue
+            print(f"[OK] Add: {rel}")
             lines.append(f"\n===== BEGIN {rel} =====\n")
             with open(p, "r", encoding="utf-8", errors="ignore") as src:
               lines.append(src.read())
             lines.append(f"\n===== END {rel} =====\n")
+
+          # Cache-Buster am Ende
+          lines.append(f"\n===== BUNDLE_BUILT_AT: {datetime.datetime.utcnow().isoformat()}Z =====\n")
+
           with open(out_path, "w", encoding="utf-8") as out:
             out.write("".join(lines))
-          print(f"Wrote {out_path} with {len(merged)} files from {len(manifests)} manifests.")
+          print(f"[INFO] Wrote {out_path} with {len(merged)} files from {len(manifests)} manifests.")
           PY
 
       - name: Commit bundle
         run: |
+          git status
           git config user.name "repo-bot"
           git config user.email "repo-bot@users.noreply.github.com"
           git add CHATGPT_BUNDLE.txt
-          git commit -m "chore: update CHATGPT_BUNDLE from manifests" || echo "No changes"
+          git commit -m "chore: update CHATGPT_BUNDLE from manifests (debug)" || echo "No changes"
           git push
