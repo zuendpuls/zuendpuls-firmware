@@ -1887,3 +1887,5 @@ inline bool set(uint16_t y, uint8_t m, uint8_t d, uint8_t hh, uint8_t mm, uint8_
 // später: Zeit lesen/schreiben
 
 ===== END src/sender/rtc.cpp =====
+
+===== BUNDLE_BUILT_AT: 2025-10-20T09:43:32.410547Z =====
